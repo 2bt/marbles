@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Marbles</title>
+  <style>
+body {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  background-color: #111;
+  overflow: hidden;
+}
+#canvas {
+  image-rendering: optimizespeed;
+  image-rendering: pixelated;
+}
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+"use strict";
+(async () => {
+  const text_decoder = new TextDecoder("utf8");
+  const env = {
+    print(ptr, len) {
+      const raw = new Uint8Array(instance.exports.memory.buffer, ptr, len);
+      console.log(text_decoder.decode(raw));
+    },
+  };
+
+  const response = await fetch("blob.wasm");
+  const buffer = await response.arrayBuffer();
+  const {instance} = await WebAssembly.instantiate(buffer, {env});
+
+  const game = {
+    buttons: 0,
+    touch_active: false,
+    touch_x: 0,
+    touch_y: 0,
+    canvas: document.getElementById("canvas"),
+    init() {
+      instance.exports.init(Math.random() * 99999999);
+      game.w = instance.exports.width();
+      game.h = instance.exports.height();
+      game.r = game.w / game.h;
+      game.canvas.width  = game.w;
+      game.canvas.height = game.h;
+      game.resize();
+      window.addEventListener("resize", game.resize);
+      game.pixels_image = new ImageData(game.w, game.h);
+      game.ctx = game.canvas.getContext('2d', { alpha: false });
+      // input
+      const KEY_MAP = {
+        "ArrowLeft"  : 1,
+        "ArrowRight" : 2,
+        "ArrowUp"    : 4,
+        "ArrowDown"  : 8,
+        "KeyX"       : 16,
+      };
+      window.addEventListener("keydown", (e) => { game.buttons |=  KEY_MAP[e.code]; });
+      window.addEventListener("keyup",   (e) => { game.buttons &= ~KEY_MAP[e.code]; });
+      const touch = (e) => {
+        e.preventDefault();
+        const t = e.targetTouches[0];
+        game.touch_active = !!t;
+        if (!game.touch_active) return;
+        game.touch_x = Math.floor((t.clientX - t.target.offsetLeft) / t.target.clientWidth * game.w);
+        game.touch_y = Math.floor((t.clientY - t.target.offsetTop) / t.target.clientHeight * game.h);
+      };
+      game.canvas.addEventListener("touchstart", touch, { passive: false });
+      game.canvas.addEventListener("touchend",   touch, { passive: false });
+      game.canvas.addEventListener("touchmove",  touch, { passive: false });
+      const mouse = (e) => {
+        e.preventDefault();
+        game.touch_active = e.buttons != 0;
+        if (!game.touch_active) return;
+        game.touch_x = Math.floor((e.clientX - e.target.offsetLeft) / e.target.clientWidth * game.w);
+        game.touch_y = Math.floor((e.clientY - e.target.offsetTop) / e.target.clientHeight * game.h);
+      };
+      game.canvas.addEventListener("mousedown",  mouse, { passive: false });
+      game.canvas.addEventListener("mouseup",    mouse, { passive: false });
+      game.canvas.addEventListener("mousemove",  mouse, { passive: false });
+    },
+    resize() {
+      const iw = window.innerWidth;
+      const ih = window.innerHeight;
+      if (iw / ih < game.r) {
+        game.canvas.style.width  = iw + "px";
+        game.canvas.style.height = iw / game.r + "px";
+      }
+      else {
+        game.canvas.style.width  = ih * game.r + "px";
+        game.canvas.style.height = ih + "px";
+      }
+    },
+    loop() {
+      instance.exports.update(game.buttons,
+                              game.touch_active,
+                              game.touch_x,
+                              game.touch_y);
+      let array = new Uint8ClampedArray(instance.exports.memory.buffer,
+                                        instance.exports.pixels(),
+                                        game.w * game.h * 4);
+      game.pixels_image.data.set(array);
+      game.ctx.putImageData(game.pixels_image, 0, 0);
+      window.requestAnimationFrame(game.loop);
+    },
+  };
+  game.init();
+  game.loop();
+})();
+  </script>
+</body>
+</html>
+
