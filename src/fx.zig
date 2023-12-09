@@ -45,7 +45,7 @@ pub const Input = struct {
         x = 16,
     };
     pub fn justPressed(self: @This(), button: Button) bool {
-        const b = @enumToInt(button);
+        const b = @intFromEnum(button);
         return self.buttons & b > 0 and self.prev_buttons & b == 0;
     }
 };

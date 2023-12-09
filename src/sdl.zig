@@ -68,11 +68,11 @@ pub fn main() !void {
         //fx.input.touch_y = touch_y;
         fx.input.prev_buttons = fx.input.buttons;
         fx.input.buttons = 0;
-        if (key_state[c.SDL_SCANCODE_LEFT] > 0) fx.input.buttons |= @enumToInt(fx.Input.Button.left);
-        if (key_state[c.SDL_SCANCODE_RIGHT] > 0) fx.input.buttons |= @enumToInt(fx.Input.Button.right);
-        if (key_state[c.SDL_SCANCODE_UP] > 0) fx.input.buttons |= @enumToInt(fx.Input.Button.up);
-        if (key_state[c.SDL_SCANCODE_DOWN] > 0) fx.input.buttons |= @enumToInt(fx.Input.Button.down);
-        if (key_state[c.SDL_SCANCODE_X] > 0) fx.input.buttons |= @enumToInt(fx.Input.Button.x);
+        if (key_state[c.SDL_SCANCODE_LEFT] > 0) fx.input.buttons |= @intFromEnum(fx.Input.Button.left);
+        if (key_state[c.SDL_SCANCODE_RIGHT] > 0) fx.input.buttons |= @intFromEnum(fx.Input.Button.right);
+        if (key_state[c.SDL_SCANCODE_UP] > 0) fx.input.buttons |= @intFromEnum(fx.Input.Button.up);
+        if (key_state[c.SDL_SCANCODE_DOWN] > 0) fx.input.buttons |= @intFromEnum(fx.Input.Button.down);
+        if (key_state[c.SDL_SCANCODE_X] > 0) fx.input.buttons |= @intFromEnum(fx.Input.Button.x);
 
         try game.update();
 

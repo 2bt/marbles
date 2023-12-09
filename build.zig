@@ -1,25 +1,35 @@
 const std = @import("std");
 
 pub fn build(b: *std.build.Builder) void {
-    const exe = b.addExecutable("marbles", "src/sdl.zig");
-    exe.setTarget(b.standardTargetOptions(.{}));
-    exe.setBuildMode(b.standardReleaseOptions());
-    exe.install();
+    const exe = b.addExecutable(.{
+        .name = "marbles",
+        .root_source_file = .{ .path = "src/sdl.zig" },
+    });
+    b.installArtifact(exe);
 
     exe.linkSystemLibrary("c");
     exe.linkSystemLibrary("SDL2");
     exe.linkSystemLibrary("SDL2_image");
 
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // wasm lib
-    const wasm = b.addSharedLibrary("blob", "src/wasm.zig", .unversioned);
-    wasm.setBuildMode(.ReleaseSmall);
-    wasm.setTarget(std.zig.CrossTarget.parse(.{
-        .arch_os_abi = "wasm32-freestanding",
-    }) catch unreachable);
-    wasm.install();
+    // wasm
+    const wasm = b.addExecutable(.{
+        .name = "blob",
+        .root_source_file = .{ .path = "src/wasm.zig" },
+        .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
+        .optimize = .ReleaseSmall,
+    });
+    wasm.entry = .disabled;
+    wasm.export_symbol_names = &.{
+        "init",
+        "update",
+        "pixels",
+        "width",
+        "height",
+    };
+    b.installArtifact(wasm);
 }

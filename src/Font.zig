@@ -8,7 +8,7 @@ pub const Font = struct {
     dy: i32,
 
     pub fn load(comptime path: []const u8) !Font {
-        var surf = try Surface.load(path);
+        const surf = try Surface.load(path);
         const w = @divTrunc(surf.w, 16);
         const h = @divTrunc(surf.h, 6);
         return Font{

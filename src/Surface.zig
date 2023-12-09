@@ -10,7 +10,7 @@ pub const Surface = struct {
         return .{
             .w = w,
             .h = h,
-            .pixels = try std.heap.page_allocator.alloc(u32, @intCast(usize, w * h)),
+            .pixels = try std.heap.page_allocator.alloc(u32, @intCast(w * h)),
         };
     }
 
@@ -24,7 +24,7 @@ pub const Surface = struct {
                 const b = @min(8 - self.i, n);
                 n -= b;
                 v <<= b;
-                v |= (@intCast(u32, self.p[0]) >> self.i) & ((@as(u32, 1) << b) - 1);
+                v |= (@as(u32, @intCast(self.p[0])) >> self.i) & ((@as(u32, 1) << b) - 1);
                 self.i += b;
                 if (self.i == 8) self.p += 1;
                 self.i &= 7;
@@ -36,11 +36,11 @@ pub const Surface = struct {
     pub fn load(comptime path: []const u8) !Surface {
         var reader = BitReader{ .p = @embedFile(path), .i = 0 };
         var surf = try init(
-            @intCast(i32, reader.read(16)),
-            @intCast(i32, reader.read(16)),
+            @intCast(reader.read(16)),
+            @intCast(reader.read(16)),
         );
         const color_count = reader.read(8);
-        const bits_per_color = @intCast(u5, 32 - @clz(color_count));
+        const bits_per_color = @as(u5, @intCast(32 - @clz(color_count)));
         // color table
         const colors = reader.p;
         reader.p += color_count * 4;
@@ -54,8 +54,8 @@ pub const Surface = struct {
         while (i < surf.pixels.len) {
             const d = reader.read(BITS_D);
             if (d == 0) {
-                var c = reader.read(bits_per_color);
-                @memcpy(@ptrCast([*]u8, surf.pixels.ptr + i), colors + c * 4, 4);
+                const c = reader.read(bits_per_color);
+                @memcpy(@as([*]u8, @ptrCast(surf.pixels.ptr + i))[0..4], colors + c * 4);
                 i += 1;
             } else {
                 const bits: u5 = if (reader.read(1) == 0) BITS_L1 else BITS_L2;
@@ -94,18 +94,23 @@ pub const Surface = struct {
             yy = 0;
         }
         if (rh > self.h - yy) rh = self.h - yy;
-        var q = s.pixels.ptr + @intCast(usize, ry * s.w + rx);
-        var p = self.pixels.ptr + @intCast(usize, yy * self.w + xx);
+        var q = s.pixels.ptr + @as(usize, @intCast(ry * s.w + rx));
+        var p = self.pixels.ptr + @as(usize, @intCast(yy * self.w + xx));
         var iy: i32 = 0;
         while (iy < rh) : (iy += 1) {
             var ix: u32 = 0;
             while (ix < rw) : (ix += 1) {
-                var c = q[ix];
+                const c = q[ix];
                 if (c & 0xff000000 != 0) p[ix] = c;
             }
-            p += @intCast(usize, self.w);
-            q += @intCast(usize, s.w);
+            p += @as(usize, @intCast(self.w));
+            q += @as(usize, @intCast(s.w));
         }
+    }
+
+    pub fn printCentered(self: *Surface, font: Font, x: i32, y: i32, string: []const u8) void {
+        const o: i32 = @intCast(string.len);
+        self.print(font, x - @divTrunc(o * font.dx, 2), y, string);
     }
 
     pub fn print(self: *Surface, font: Font, x: i32, y: i32, string: []const u8) void {

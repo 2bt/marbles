@@ -38,7 +38,7 @@ var shake: f32 = 0;
 
 const GameState = enum { normal, over };
 
-const MarbleType = enum(u32) {
+const MarbleType = enum(i32) {
     none = 0,
     red,
     blue,
@@ -49,11 +49,11 @@ const MarbleType = enum(u32) {
 const StockMarble = struct {
     type: MarbleType = undefined,
     weight: i32 = undefined,
-    offset: f32 = undefined,
+    offset: f32 = 0,
     fn makeRandom() StockMarble {
         return .{
-            .type = @intToEnum(MarbleType, fx.random.intRangeAtMost(u32, 1, game_level)),
-            .weight = @intCast(i32, fx.random.intRangeAtMost(u32, 1, game_level)),
+            .type = @enumFromInt(fx.random.intRangeAtMost(u32, 1, game_level)),
+            .weight = @intCast(fx.random.intRangeAtMost(u32, 1, game_level)),
         };
     }
 };
@@ -76,7 +76,7 @@ const FlyingMarble = struct {
 };
 
 const Lever = struct {
-    level: u32 = 1,
+    level: i32 = 1,
     offset: f32 = 0,
     weight: i32 = 0,
 };
@@ -98,12 +98,12 @@ pub fn init() !void {
     stage_surf = try Surface.load("stage.bin");
     stuff_surf = try Surface.load("stuff.bin");
 
-    for (grid) |*row| {
+    for (&grid) |*row| {
         for (row) |*m| m.* = .{};
     }
 
     // init stock
-    for (stock) |*row| {
+    for (&stock) |*row| {
         for (row) |*m| m.* = StockMarble.makeRandom();
     }
 }
@@ -114,35 +114,35 @@ fn updateOffset(m: anytype) void {
 
 fn drawMarble(m: anytype, x: i32, y: i32) void {
     const marble_rect = Rect{
-        .x = @intCast(i32, @enumToInt(m.type)) * 16,
+        .x = @intFromEnum(m.type) * 16,
         .y = 0,
         .w = 16,
         .h = 16,
     };
     var yy = y;
-    if (@hasField(@TypeOf(m), "offset")) yy -= @floatToInt(i32, m.offset * 16);
+    if (@hasField(@TypeOf(m), "offset")) yy -= @as(i32, @intFromFloat(m.offset * 16));
     fx.screen.copy(stuff_surf, marble_rect, x, yy);
     const str = fx.format("{}", .{m.weight});
-    fx.screen.print(font, x + 8 - @intCast(i32, str.len) * 3, yy + 5, str);
+    fx.screen.printCentered(font, x + 8, yy + 5, str);
 }
 
 fn addMarbleToColumn(t: MarbleType, weight: i32, col: usize) !void {
     levers[col].weight += weight;
-    var r = @intCast(usize, levers[col].level);
+    var r: usize = @intCast(levers[col].level);
     while (grid[r][col].type != .none) r += 1;
     std.debug.assert(r < ROW_COUNT);
     grid[r][col] = .{ .type = t, .weight = weight };
 }
 
 fn addMarbleParticles(row: usize, col: usize, t: MarbleType) !void {
-    const x = 12 + @intToFloat(f32, col * 20);
-    const y = 208 - @intToFloat(f32, row * 16);
+    const x = 12 + @as(f32, @floatFromInt(col * 20));
+    const y = 208 - @as(f32, @floatFromInt(row * 16));
     for ([_]i32{ 0, 8 }) |dx| {
         for ([_]i32{ 0, 8 }) |dy| {
             try particles.append(.{
-                .x = x + @intToFloat(f32, dx),
-                .y = y + @intToFloat(f32, dy),
-                .sx = dx + @intCast(i32, @enumToInt(t)) * 16,
+                .x = x + @as(f32, @floatFromInt(dx)),
+                .y = y + @as(f32, @floatFromInt(dy)),
+                .sx = dx + @intFromEnum(t) * 16,
                 .sy = dy,
                 .vx = (fx.random.float(f32) - 0.5) * 10,
                 .vy = (fx.random.float(f32) - 0.5) * 10 - 2,
@@ -159,7 +159,7 @@ fn updateGrid() !void {
     var dissolve_weight: usize = 0;
     var c: usize = 0;
     while (c < COL_COUNT) : (c += 1) {
-        var r: usize = levers[c].level;
+        var r: usize = @intCast(levers[c].level);
         var shift: usize = 0;
         while (r < ROW_COUNT and grid[r][c].type != .none) {
             var m = &grid[r][c];
@@ -181,7 +181,7 @@ fn updateGrid() !void {
 
             // remove marble
             dissolve_count += 1;
-            dissolve_weight += @intCast(usize, m.weight);
+            dissolve_weight += @intCast(m.weight);
             levers[c].weight -= m.weight;
             var rr = r + 1;
             while (rr < ROW_COUNT) : (rr += 1) {
@@ -194,7 +194,7 @@ fn updateGrid() !void {
     // inc score
     // TODO: better formula
     game_score += dissolve_weight * dissolve_count;
-    shake += @intToFloat(f32, dissolve_count) * 0.5;
+    shake += @as(f32, @floatFromInt(dissolve_count)) * 0.5;
 
     // adjust levers
     c = 0;
@@ -207,19 +207,20 @@ fn updateGrid() !void {
         // send marble flying
         const col = if (levers[c].level > new_level) c else c + 1;
         const col_b = col ^ 1;
+        const col_bi: i32 = @intCast(col_b);
 
         if (new_level == 0 or new_level == 2) {
             var r: usize = ROW_COUNT;
             while (r > 0) {
                 r -= 1;
-                var m = &grid[r][col_b];
+                const m = &grid[r][col_b];
                 if (m.type != .none) {
                     try flying_marbles.append(.{
                         .type = m.type,
                         .weight = m.weight,
-                        .dest_col = @intCast(i32, col_b) - weight_diff,
-                        .y = @intToFloat(f32, r),
-                        .x = @intToFloat(f32, col_b),
+                        .dest_col = col_bi - weight_diff,
+                        .y = @floatFromInt(r),
+                        .x = @floatFromInt(col_b),
                     });
                     levers[col_b].weight -= m.weight;
                     m.* = .{};
@@ -266,7 +267,7 @@ fn updateGrid() !void {
     const GridPosition = struct { col: usize, row: usize };
     var todo = std.AutoHashMap(GridPosition, void).init(std.heap.page_allocator);
     defer todo.deinit();
-    for (grid) |row, j| {
+    for (grid, 0..) |row, j| {
         var i: usize = 1;
         while (i < COL_COUNT - 1) : (i += 1) {
             const m0 = row[i - 1];
@@ -293,15 +294,15 @@ fn updateGrid() !void {
         fn spread(m: *GridMarble, neighbor: GridMarble) void {
             if (neighbor.type == m.type and neighbor.state == .dissolving) {
                 m.state = .dissolving;
-                m.dissolve_tick = std.math.max(m.dissolve_tick, neighbor.dissolve_tick);
+                m.dissolve_tick = @max(m.dissolve_tick, neighbor.dissolve_tick);
             }
         }
     };
     var found = true;
     while (found) {
         found = false;
-        for (grid) |*row, j| {
-            for (row) |*m, i| {
+        for (&grid, 0..) |*row, j| {
+            for (row, 0..) |*m, i| {
                 if (m.type == .none) continue;
                 if (m.state == .dissolving) continue;
                 if (i > 0) local.spread(m, grid[j][i - 1]);
@@ -317,8 +318,8 @@ fn updateGrid() !void {
 pub fn update() !void {
     // screen shake
     shake *= 0.94;
-    const shake_x = @floatToInt(i32, fx.random.floatNorm(f32) * shake);
-    const shake_y = @floatToInt(i32, fx.random.floatNorm(f32) * shake);
+    const shake_x: i32 = @intFromFloat(fx.random.floatNorm(f32) * shake);
+    const shake_y: i32 = @intFromFloat(fx.random.floatNorm(f32) * shake);
 
     // update crane
     if (crane_anim < 99) crane_anim += 1;
@@ -332,7 +333,7 @@ pub fn update() !void {
 
         // touch input
         if (fx.input.touch_active) {
-            var i = @divFloor(fx.input.touch_x - 10, 20);
+            const i = @divFloor(fx.input.touch_x - 10, 20);
             if (i >= 0 and i < levers.len) {
                 if (!fx.input.prev_touch_active and crane_col == i) {
                     crane_drop = true;
@@ -343,7 +344,7 @@ pub fn update() !void {
         }
 
         // drop marble
-        if (crane_drop and @intToFloat(f32, crane_col) == crane_x) {
+        if (crane_drop and @as(f32, @floatFromInt(crane_col)) == crane_x) {
             crane_drop = false;
 
             // set flying
@@ -354,13 +355,13 @@ pub fn update() !void {
                     .weight = crane_marble.weight,
                     .dest_col = crane_col,
                     .y = TOP,
-                    .x = @intToFloat(f32, crane_col),
+                    .x = @as(f32, @floatFromInt(crane_col)),
                 });
             }
             crane_anim = 0;
 
             // restock
-            const col = @intCast(usize, crane_col);
+            const col: usize = @intCast(crane_col);
             crane_marble = stock[0][col];
             stock[0][col] = stock[1][col];
             stock[1][col] = StockMarble.makeRandom();
@@ -371,7 +372,7 @@ pub fn update() !void {
         }
     }
     crane_x = std.math.clamp(
-        @intToFloat(f32, crane_col),
+        @as(f32, @floatFromInt(crane_col)),
         crane_x - SPEED_X,
         crane_x + SPEED_X,
     );
@@ -382,10 +383,10 @@ pub fn update() !void {
         while (i < flying_marbles.items.len) {
             var f = &flying_marbles.items[i];
 
-            const dx = @intToFloat(f32, f.dest_col);
+            const dx = @as(f32, @floatFromInt(f.dest_col));
 
             if (f.x != dx and f.y < TOP) {
-                f.y = std.math.min(f.y + SPEED_Y, TOP);
+                f.y = @min(f.y + SPEED_Y, TOP);
             } else if (f.dest_col < 0) {
                 f.x -= SPEED_X;
                 if (f.x < -3) {
@@ -405,12 +406,12 @@ pub fn update() !void {
             } else {
                 std.debug.assert(f.x == dx);
                 f.y -= SPEED_Y;
-                const col = @intCast(usize, f.dest_col);
-                var r = @intCast(usize, levers[col].level);
+                const col: usize = @intCast(f.dest_col);
+                var r: usize = @intCast(levers[col].level);
                 while (r < ROW_COUNT) : (r += 1) {
                     if (grid[r][col].type == .none) break;
                 }
-                if (f.y < @intToFloat(f32, r)) {
+                if (f.y < @as(f32, @floatFromInt(r))) {
                     try addMarbleToColumn(f.type, f.weight, col);
                     _ = flying_marbles.swapRemove(i);
                     continue;
@@ -424,11 +425,11 @@ pub fn update() !void {
 
     // update offsets
     updateOffset(&crane_marble);
-    for (levers) |*l| updateOffset(l);
-    for (grid) |*row| {
+    for (&levers) |*l| updateOffset(l);
+    for (&grid) |*row| {
         for (row) |*m| updateOffset(m);
     }
-    for (stock) |*row| {
+    for (&stock) |*row| {
         for (row) |*m| updateOffset(m);
     }
 
@@ -464,47 +465,54 @@ pub fn update() !void {
     );
 
     // draw marbles
-    for (grid) |row, r| {
-        for (row) |m, c| {
+    for (grid, 0..) |row, r| {
+        const ri: i32 = @intCast(r);
+        for (row, 0..) |m, c| {
+            const ci: i32 = @intCast(c);
             if (m.type == .none) continue;
             drawMarble(
                 m,
-                shake_x + 12 + @intCast(i32, c * 20),
-                shake_y + 208 - @intCast(i32, r * 16),
+                shake_x + 12 + ci * 20,
+                shake_y + 208 - ri * 16,
             );
         }
     }
 
     // draw stock
-    for (stock) |row, r| {
-        for (row) |m, c| {
+    for (stock, 0..) |row, r| {
+        const ri: i32 = @intCast(r);
+        for (row, 0..) |m, c| {
+            const ci: i32 = @intCast(c);
             if (m.type == .none) continue;
             drawMarble(
                 m,
-                shake_x + 12 + @intCast(i32, c * 20),
-                shake_y + 40 - @intCast(i32, r * 16),
+                shake_x + 12 + ci * 20,
+                shake_y + 40 - ri * 16,
             );
         }
     }
 
-    for (levers) |l, c| {
+    for (levers, 0..) |l, c| {
+        const ci: i32 = @intCast(c);
         // lever
         fx.screen.copy(
             stuff_surf,
             .{
-                .x = @intCast(i32, c % 2 * 16),
+                .x = @intCast(c % 2 * 16),
                 .y = 40,
                 .w = 16,
                 .h = 48,
             },
-            shake_x + 12 + @intCast(i32, c * 20),
-            shake_y + 216 - @intCast(i32, l.level * 16) - @floatToInt(i32, l.offset * 16),
+            shake_x + 12 + ci * 20,
+            shake_y + 216 - l.level * 16 - @as(i32, @intFromFloat(l.offset * 16)),
         );
     }
 
     // draw dissolve effect
-    for (grid) |row, r| {
-        for (row) |m, c| {
+    for (grid, 0..) |row, r| {
+        const ri: i32 = @intCast(r);
+        for (row, 0..) |m, c| {
+            const ci: i32 = @intCast(c);
             if (m.type == .none) continue;
             if (m.state != .dissolving) continue;
             if (m.dissolve_tick > 0 and @mod(m.dissolve_tick, 12) > 4) {
@@ -517,8 +525,8 @@ pub fn update() !void {
                 fx.screen.copy(
                     stuff_surf,
                     dissolve_rect,
-                    4 + @intCast(i32, c * 20),
-                    200 - @intCast(i32, r * 16),
+                    4 + ci * 20,
+                    200 - ri * 16,
                 );
             }
         }
@@ -528,8 +536,8 @@ pub fn update() !void {
     for (flying_marbles.items) |f| {
         drawMarble(
             f,
-            shake_x + 12 + @floatToInt(i32, f.x * 20),
-            shake_y + 208 - @floatToInt(i32, f.y * 16),
+            shake_x + 12 + @as(i32, @intFromFloat(f.x * 20)),
+            shake_y + 208 - @as(i32, @intFromFloat(f.y * 16)),
         );
     }
 
@@ -573,13 +581,13 @@ pub fn update() !void {
     fx.screen.copy(
         stuff_surf,
         crane_rect,
-        shake_x + @floatToInt(i32, 4 + crane_x * 20),
+        shake_x + @as(i32, @intFromFloat(4 + crane_x * 20)),
         shake_y + 56,
     );
     if (crane_marble.type != .none) {
         drawMarble(
             crane_marble,
-            shake_x + @floatToInt(i32, 12 + crane_x * 20),
+            shake_x + @as(i32, @intFromFloat(12 + crane_x * 20)),
             shake_y + 60,
         );
     }
@@ -587,11 +595,12 @@ pub fn update() !void {
     // weight labels
     var col: usize = 0;
     while (col < COL_COUNT) : (col += 2) {
-        const w = std.math.absCast(levers[col].weight - levers[col ^ 1].weight);
+        const ci: i32 = @intCast(col);
+        const w = @abs(levers[col].weight - levers[col ^ 1].weight);
         const str = fx.format("{}", .{w});
-        fx.screen.print(
+        fx.screen.printCentered(
             font,
-            shake_x + @intCast(i32, 30 + col * 20 - str.len * 3),
+            shake_x + 30 + ci * 20,
             shake_y + 241,
             str,
         );
@@ -607,8 +616,8 @@ pub fn update() !void {
                 .w = p.sw,
                 .h = p.sh,
             },
-            shake_x + @floatToInt(i32, p.x),
-            shake_y + @floatToInt(i32, p.y),
+            shake_x + @as(i32, @intFromFloat(p.x)),
+            shake_y + @as(i32, @intFromFloat(p.y)),
         );
     }
 
